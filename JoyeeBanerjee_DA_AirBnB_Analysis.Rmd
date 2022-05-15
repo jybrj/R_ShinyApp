@@ -1,0 +1,1006 @@
+---
+title: "R Final Project AirBnB Analysis"
+author: "Joyee Banerjee"
+date: "March 15, 2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# DA A21 Final Project - R for Big Data : Joyee Banerjee
+
+## Project description and objectives:
+
+Create a Shiny application that allows to explore the AirBnB data (Paris data). A minimal application
+should contains:
+• Relationship between prices and apartment features,
+• Number of apartments per owner,
+• Renting price per city quarter (“arrondissements”),
+• Visit frequency of the different quarters according to time.
+
+## Approach
+
+### Essential packages and softwares
+
+```{r}
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(stringr)
+library(shiny)
+library(shinydashboard)
+library(scales)
+library(DT)
+library(visdat)
+library(naniar)
+library(ggplot2)
+library(plotly)
+library(gganimate)
+library(ggrepel)
+library(cowplot)
+library(gifski)
+library(writexl)
+library(png)
+library(lubridate)
+library(leaflet)
+```
+
+## Exploring the dataset
+
+### Loading the dataset
+
+```{r}
+airbnb <- load("AirBnB.RData")
+```
+
+## Observations from the dataset
+
+1.1. The dataset "AirBnB.RData" consists of two different tables "L" and "R"
+
+```{r}
+head(airbnb)
+```
+
+1.1.1. The table "L" consists of a dataset with 52725 observations in 95 variables describing AirBnB Properties in Paris.
+1.1.2. The table "R" consists of a dataset with 663599 observations in 2 variables describing visit records for Properties contained in "L".
+
+```{r}
+head(L)
+head(R)
+dim(L)
+dim(R)
+```
+
+1.1.3. From the summary a descriptive overview of the dataset is gathered, which consists of Properties location in Paris between the duration of 2009 to 2016.
+
+```{r}
+summary(L)
+```
+
+1.1.4.Using the following function the 95 column names of the dataset are displayed.
+
+```{r}
+colnames(L)
+```
+
+1.1.5. To check the datatypes of the columns in the dataset the following function is applied.
+
+```{r}
+sapply(L, typeof)
+```
+
+1.1.6.To check the variables type of the columns in a more comprehensive way the following function is utilized.
+
+```{r}
+table(vapply(L, class, ''))
+```
+
+### Cleaning of the dataset
+
+####Step 1 - Check for missing values
+
+2.1.1. To see the total number of missing values in "L"
+
+```{r}
+sum(is.na(L))
+```
+
+2.1.2. To identify the columns with the missing data
+
+```{r}
+colSums(is.na(L))
+```
+
+2.1.3. To cross-check and get a more comprehensive overview, I used the #library(visdat) to get the columns with the missing data
+```{r}
+miss_var_summary(L)
+```
+
+2.2.4. From here we see that the column 'neighbourhood_group_cleansed' and 'has_availability' are completely empty
+2.2.5. The column 'square_feet" also has more than ninety percent of its data missing
+2.2.6. The review columns also have majority of the missing values
+
+#### Step 2 - Replacing the special characters in the required columns
+
+3.1.1. It is important to remove special characters like '*$*' from the columns containing price data to facilitate manipulation of data during analysis and it is also important to remove the special characters like '*Ã,©*' from the column containing the neighborhood name for easier readability. 
+
+3.1.2. To remove the '*$*' character the following has been used.
+
+```{r}
+L$price <- as.numeric(gsub('\\$|,', '', L$price))
+L$weekly_price <- as.numeric(gsub('\\$|,', '', L$weekly_price))
+L$monthly_price <- as.numeric(gsub('\\$|,', '', L$monthly_price))
+L$security_deposit <- as.numeric(gsub('\\$|,', '', L$security_deposit))
+# Setting the correct integer value
+L$bathrooms <- as.integer(L$bathrooms)
+```
+
+3.1.3. To cross-check if the removal has worked, I have used the following function.
+
+```{r}
+glimpse(L[,"price"])
+glimpse(L[,"weekly_price"])
+glimpse(L[,"monthly_price"])
+glimpse(L[,"security_deposit"])
+glimpse(L[,"bathrooms"])
+```
+
+3.1.4. To remove the '*Ã,©*' character the following has been used.
+
+```{r}
+"Île-de-France" <- L[L == "ÃŽle-de-France"]
+"Hotel_de_Ville" <- L[L == "HÃ´tel-de-Ville"]
+"Elysée" <- L[L == "Ã‰lysÃ©e"]
+"Panthéon" <- L[L == "PanthÃ©on"]
+"Opéra" <- L[L == "OpÃ©ra"]
+"Ménilmontant" <- L[L == "MÃ©nilmontant"]
+"Entrepôt" <- L[L == "EntrepÃ´t"]
+```
+
+#### Step 3 - Creating a cleaned dataset to work with
+
+4.1.1. From the above Step, we can eliminate all the columns with missing data.
+To retain the original dataset and to prevent overwriting it, I created a new dataset called " *Paris_AirBnB* " by eliminating the columns with only missing values or with a majority of missing values and keeping only the relevant columns.
+
+4.1.2. To set the right column names the following was used.
+
+```{r}
+Paris_AirBnB <- select( L,Listing_id = id,
+            Host_id = host_id,
+            Host_Name = host_name, 
+            Host_Since = host_since, 
+            Host_Location = host_location,
+            Address = street,
+            Neighbourhood = neighbourhood_cleansed, 
+            City = city,
+            Pincode = zipcode,
+            Latitude = latitude, 
+            Longitude =longitude,
+            Type = property_type,
+            Bathrooms = bathrooms,
+            Bedrooms = bedrooms,
+            Beds = beds, 
+            Bed_Type = bed_type,
+            Room = room_type,
+            Facilities = amenities,
+            No_of_Guests = accommodates,
+            Price = price, 
+            Guests_Included = guests_included,
+            Min_Stay_Duration = minimum_nights, 
+            Max_Stay_Duration = maximum_nights,
+            Availability = availability_365, instant_bookable, cancellation_policy, transit, host_response_time,
+            SuperHost = host_is_superhost,
+            Host_verification = host_verifications, host_has_profile_pic, host_identity_verified, 
+            Host_Listings_total = host_total_listings_count, 
+            Total_Reviews = number_of_reviews, 
+            Latest_Review = last_review)
+```
+
+
+4.1.3. Identifying the new column names
+
+```{r}
+colnames(Paris_AirBnB)
+```
+
+4.1.4. The new dataset " *Paris_AirBnB* " has 35 columns
+
+```{r}
+dim(Paris_AirBnB)
+```
+
+4.1.5. To display snippets of the new dataset
+
+```{r}
+head(Paris_AirBnB, 3)
+tail(Paris_AirBnB, 3)
+```
+
+#### Step 4 - Setting the correct datatype
+
+5.1.1. It is important to assign the correct value types to the variables so that the data can be manipulated in the correct way during the analysis.
+Below I have assigned the proper value types to the required variables.
+
+```{r}
+Paris_AirBnB$Price <- as.numeric(Paris_AirBnB$Price)
+Paris_AirBnB$Pincode <- as.numeric(Paris_AirBnB$Pincode)
+Paris_AirBnB$Bathrooms  <- as.numeric(Paris_AirBnB$Bathrooms)
+Paris_AirBnB$Beds  <- as.numeric(Paris_AirBnB$Beds)
+Paris_AirBnB$Bathrooms  <- as.numeric(Paris_AirBnB$Bathrooms)
+Paris_AirBnB$No_of_Guests <- as.numeric(Paris_AirBnB$No_of_Guests)
+Paris_AirBnB$Guests_Included <- as.numeric(Paris_AirBnB$Guests_Included)
+Paris_AirBnB$Min_Stay_Duration <- as.numeric(Paris_AirBnB$Min_Stay_Duration)
+Paris_AirBnB$Max_Stay_Duration <- as.numeric(Paris_AirBnB$Max_Stay_Duration)
+Paris_AirBnB$Host_Listings_total  <- as.integer(Paris_AirBnB$Host_Listings_total)
+Paris_AirBnB$Total_Reviews <- as.integer(Paris_AirBnB$Total_Reviews)
+
+```
+
+```{r}
+table(vapply(Paris_AirBnB, class, ''))
+```
+
+```{r}
+sapply(Paris_AirBnB, typeof)
+```
+
+#### Step 5 - Replacing missing values and Removing duplicates
+
+6.1.1. For proper analysis of data it is essential to identify and replace missing values and eliminate the duplicate data to ensure accuracy.
+
+6.1.2. To check if any of the rows have "N/A" or "NAN" values following was executed.
+
+```{r}
+nan_count <-sapply(Paris_AirBnB, function(y) sum(length(which(is.na(y)))))
+nan_count
+```
+
+6.1.3. Here we see that there are three columns namely 'Bathrooms', 'Bedrooms' and 'Beds' with missing values of 243,193 and 80 respectively.
+
+6.1.4. Now that the columns with the missing values have been identified, the missing value in each column will be repplaced by the mean of the column values.
+
+```{r}
+Paris_AirBnB$Bathrooms[is.na(Paris_AirBnB$Bathrooms)] <- round(mean(Paris_AirBnB$Bathrooms, na.rm = TRUE))
+Paris_AirBnB$Bedrooms[is.na(Paris_AirBnB$Bedrooms)] <- round(mean(Paris_AirBnB$Bedrooms, na.rm = TRUE))
+Paris_AirBnB$Beds[is.na(Paris_AirBnB$Beds)] <- round(mean(Paris_AirBnB$Beds, na.rm = TRUE))
+```
+
+6.1.5. Now to verify if the missing values have indeed been replaced the following function has been used.
+
+```{r}
+sum(is.na(Paris_AirBnB$Bathrooms))
+sum(is.na(Paris_AirBnB$Bedrooms))
+sum(is.na(Paris_AirBnB$Beds))
+```
+
+6.1.6 To remove the duplicates the following function was used.
+
+```{r}
+Paris_AirBnB <- Paris_AirBnB[!duplicated(Paris_AirBnB$Listing_id), ]
+```
+
+
+#### Step 6 - Performing summary of certain variables to clean the data a bit more
+
+7.1.1. A summary of the Price variable is performed as it is one of the most important variables to be analyzed within the dataset.
+
+```{r}
+summary(Paris_AirBnB$Price)
+```
+
+7.1.2. Here we see that the maximum renting Price is four times more than the data available on maximum Price which is around 1500 usd on AirBnB Paris, so a range between 0 and 1500 was set for the Price variable column to remove any deviation during analysis.
+
+```{r}
+Paris_AirBnB <- Paris_AirBnB[Paris_AirBnB$Price >= 0 & Paris_AirBnB$Price <=1500, ] 
+```
+
+7.1.3.Here it is noticed that changing the range didn't affect the median, mean, 1st or 3rd quarter.
+
+```{r}
+summary(Paris_AirBnB$Price)
+```
+
+7.1.4.Exploring the variables properties can give us an outline of the data to be analyzed.
+
+7.1.4.1. Here the levels function is used to check the various attributes of the 'Neighbourhood' variable.
+
+```{r}
+levels(Paris_AirBnB$Neighbourhood)
+```
+
+7.1.4.2. Here the levels function is used to check the various attributes of the 'Host_Location' variable.
+
+```{r}
+levels(Paris_AirBnB$Host_Location)
+```
+
+7.1.4.3. Here the levels function is used to check the various attributes of the 'cancellation_policy' variable.
+
+```{r}
+levels(Paris_AirBnB$cancellation_policy)
+```
+
+7.1.4.4. Here the summary function is used to get an overview of the 'No_of_Guests' variable.
+
+```{r}
+summary(Paris_AirBnB$No_of_Guests)
+```
+
+7.1.4.5. Here the count function is used to the number for the various bed types in the 'Bed_Type' variable.
+
+```{r}
+Paris_AirBnB %>% count(Bed_Type)
+```
+
+7.1.4.6. To check the number of unique variables for each column the following function is used.
+
+```{r}
+sapply(Paris_AirBnB, n_distinct)
+```
+
+7.1.4.7.1. Below we get a comprehensive overview of the type of properties and their corresponding numbers listed in the dataset.
+
+```{r}
+Type <- Paris_AirBnB %>% count(Type)
+Type = arrange(Type, desc(n))
+Type
+```
+
+7.1.4.7.2. The numbers below indicate that the major chunk of the Properties listed are Apartments.
+
+```{r}
+sum <- 0
+for (i in 2:length(Type$n)){
+  sum <- sum + Type[i,2]
+}
+Main_Type <- cbind(Type[1,2], sum)
+
+Main_Type
+
+```
+
+```{r}
+Pincode <- Paris_AirBnB %>% count(Pincode)
+Pincode = arrange(Pincode)
+Pincode
+```
+7.1.4.7.3. The number below indicates that out of all the Properties listed in Paris 96% of them are Apartments.
+
+```{r}
+Apartment_Percent <- (round(Type[1,2]/length(L$id)*100, digits=2))
+Apartment_Percent
+```
+
+7.1.4.8.1. Grouping the apartments by districts or 'arrondissements' would help during analysis.
+
+```{r}
+Paris_AirBnB %>% count(Pincode)%>%
+  head(20)
+```
+
+7.1.4.8.2. The Pincode was replaced by the  'arrondissements' in the following.
+
+```{r}
+Paris_AirBnB$City = str_sub(Paris_AirBnB$City,1, 5)
+Paris_AirBnB$Pincode = str_sub(Paris_AirBnB$Pincode, -2)
+Paris_AirBnB <- subset(Paris_AirBnB, Paris_AirBnB$City == 'Paris' & Paris_AirBnB$Pincode != "" & Paris_AirBnB$Pincode <= 20 & Paris_AirBnB$Pincode != '00' & Paris_AirBnB$Pincode != ' ')
+Paris_AirBnB$Neighbourhood <- as.character(Paris_AirBnB$Neighbourhood)
+
+Pincode <- Paris_AirBnB %>% count(Pincode)
+Pincode = arrange(Pincode)
+Pincode
+
+```
+
+Now that the data has been cleaned and organized a bit, the analysis of the data is carried out in the next section.
+
+## Analysis & results from the dataset
+
+### Relationship between prices and apartment features
+
+#### Step 1 - Price Distribution and Relationship to Property Features
+
+8.1.1. First I tried to establish a relationship between the Price of the Listing and the Neighbourhood, the listing was located. Following is a bar plot.
+
+```{r}
+ Paris_AirBnB %>%
+  group_by(Neighbourhood) %>%
+  summarize(Price = mean(Price)) %>%
+  ggplot(aes(y = Price, x = Neighbourhood)) + 
+  geom_col() +
+  theme(axis.text.x = element_text(size = 8, angle = 90)) +
+  ggtitle("Average Price of Listing per Neighbourhood -1")
+
+```
+
+8.1.2. The above relationship is given a different visualization for more clarity.
+
+```{r}
+      Paris_AirBnB %>% 
+      group_by(Neighbourhood) %>% 
+      summarise(Average_Price = mean(Price, na.rm = TRUE)) %>% 
+      ggplot(aes(x = reorder(Neighbourhood, Average_Price), y = Average_Price, fill = Neighbourhood)) +
+      geom_col(stat ="identity", fill="#79BF36") +
+      coord_flip() +
+      theme_minimal()+
+      labs(x = "Neighbourhood", y = "Price") +
+      geom_text(aes(label = round(Average_Price,digit = 2)), hjust = 1.0, color = "white", size = 4.5) +
+      ggtitle("Average Price of Listing per Neighbourhood -2") + 
+      xlab("Type of Room") + 
+      ylab("Average Price")
+```
+
+
+8.2.1. Then I wanted to explore the relationship between the listing Price by number of Guests. 
+
+
+```{r}
+ggplot(data = Paris_AirBnB) + 
+  geom_point(aes(x=No_of_Guests, y=Price, col=factor(Pincode))) + 
+  scale_x_continuous(breaks = seq(1,20,1)) + 
+  scale_y_continuous(breaks = seq(0,1500,100), limits = c(0,1500)) + 
+  ggtitle('Listing price by Number of Guests -1') + 
+  xlab('Number of guests') + 
+  ylab('Price per night')
+```
+
+8.2.2 The same is represented in a different way.
+
+```{r}
+Paris_AirBnB %>% 
+  ggplot(aes(x = reorder(No_of_Guests,Price), y = Price, fill = Pincode)) + geom_col(alpha=0.8) + 
+  scale_color_brewer(palette = "Spectral")+
+  labs(title = "Listing price by Number of Guests -2",
+       x = "Number of guests", y = "Price per night")+
+  theme(text = element_text(size = 12, color = "#2D4F0C"),          
+        axis.text.x = element_text(angle = 45, color = "black"))
+```
+
+
+
+8.3.1. Type of listings according to the Property type
+
+8.3.1.1.Below we get a comprehensive overview of the type of properties and their corresponding numbers listed in the dataset.
+
+```{r}
+Type <- Paris_AirBnB %>% count(Type)
+Type = arrange(Type, desc(n))
+
+```
+
+8.3.1.2.As analyzed in 7.1.4.7.3., it is observed that out of all the Properties listed in Paris 96% of them are Apartments.
+
+
+8.3.2. A piechart was used to illustrate the same
+
+```{r}
+pie(Main_Type, labels =c('Apartements', 'Other Types of Properties'), col = c('steelblue','lightgreen'),
+    main = 'Listing Type')
+```
+
+8.3.3. Here the relationship between the Property Type and the Price is seen through a boxplot.
+
+```{r}
+ggplot(Paris_AirBnB)+  geom_boxplot(aes(x = Type,y = Price,fill = Type))+
+  labs(x = "Type of Property",y = "Price",fill = "Type of Property")+  
+  coord_flip()
+```
+
+
+8.4.1. Type of listings according to the Room Type
+
+8.4.1.1. Below we get a comprehensive overview of the type of rooms and their corresponding numbers listed in the dataset. Here we see that there are three types of rooms mainly listed : Entire home/apt, Private room and Shared room.
+
+```{r}
+Room <- Paris_AirBnB %>% count(Room)
+Room = arrange(Room, desc(n))
+Room
+```
+
+8.4.2. A barplot was used to illustrate the same.
+
+```{r}
+ggplot(Paris_AirBnB,aes(x="", y="", fill=Room))+
+geom_bar(width = 1, stat = "identity")
+```
+
+8.4.3. The same is visualized in a pie chart below.
+
+```{r}
+Count_Room <- table(Paris_AirBnB$Room)
+Type_Room <- names(Count_Room)
+Counts <- as.vector(Count_Room)
+Percentages <- scales::percent(round(Counts/sum(Counts), 2))
+Room_Percentages <- sprintf("%s (%s)", Type_Room, Percentages)
+Count_Type_Room <- data.frame(group = Type_Room, value = Counts)
+
+ pie <- ggplot(Count_Type_Room, aes(x = "", y = value, fill = Room_Percentages))+
+  geom_bar(width = 1, stat = "identity")+
+  coord_polar("y", start = 0)+
+  scale_fill_brewer("Room Types", palette = "Paired")+
+  ggtitle("Share of different Room Types in Listings")+
+  theme(plot.title = element_text(color = "black", size = 12, hjust = 0.5))+
+  ylab("")+
+  xlab("")+
+  labs(fill="")+
+  theme(axis.ticks = element_blank(), panel.grid = element_blank(), axis.text = element_blank())+
+  geom_text(aes(label = Percentages), size = 5, position = position_stack(vjust = 0.5))
+pie
+```
+
+8.4.3.1. From the barplot and the pie chart, it is observed that the majority of the Room types are Entire Home or Apartment with 86% of the share, Private rooms making up 13 % of the share and shared room making upa mere 1% of the share. 
+
+8.4.1. Exploring the relationship of Listing Price by Room type
+
+```{r}
+ggplot(Paris_AirBnB)+ 
+  geom_boxplot(aes(x = Room,y = Price,fill = Room))+ 
+  labs(x = "Type of Room",y = "Price",fill = "Type of Room")+ 
+  coord_flip()
+```
+
+8.4.2. I also computed the average Price of the Listing by Room type
+
+```{r}
+      Paris_AirBnB %>% 
+      group_by(Room) %>% 
+      summarise(Average_Price = mean(Price, na.rm = TRUE)) %>% 
+      ggplot(aes(x = reorder(Room, Average_Price), y = Average_Price, fill = Room)) +
+      geom_col(stat ="identity", fill="#79BF36") +
+      coord_flip() +
+      theme_minimal()+
+      labs(x = "Type of Room", y = "Price") +
+      geom_text(aes(label = round(Average_Price,digit = 2)), hjust = 1.0, color = "white", size = 4.5) +
+      ggtitle("Average Price of Listing by Room Type") + 
+      xlab("Type of Room") + 
+      ylab("Average Price")
+```
+
+8.5.1. Type of listings according to additional features like Bedrooms, Bathrooms, Beds and type of Beds.
+
+8.5.1.1 The relationship between the Listing Price by number of Bedrooms is seen below.
+
+```{r}
+ggplot(data = Paris_AirBnB) + 
+  geom_point(aes(x=Bedrooms, y=Price, col=factor(Pincode))) + 
+  scale_x_continuous(breaks = seq(0,10,1)) + 
+  scale_y_continuous(breaks = seq(0,1000,100), limits = c(0,1000)) + 
+  ggtitle('Listing price by number of bedrooms-1') + 
+  xlab('Number of bedrooms') + 
+  ylab('Price per night')
+```
+
+8.5.1.1 The same is seen seen through a different plot here.
+
+```{r}
+Paris_AirBnB %>% 
+  ggplot(aes(x = reorder(Bedrooms,Price), y = Price, fill = Pincode)) + geom_col(alpha=0.8) + 
+  scale_color_brewer(palette = "Spectral")+
+  labs(title = "Listing price by number of bedrooms-2",
+       x = "Number of bedrooms", y = "Price per night")+
+  theme(text = element_text(size = 12, color = "#2D4F0C"),          
+        axis.text.x = element_text(angle = 45, color = "black"))
+```
+
+
+8.5.2.1 The relationship between the Listing Price by number of Bathrooms was analyzed below.
+
+```{r}
+Paris_AirBnB %>% 
+  ggplot(aes(x = reorder(Bathrooms,Price), y = Price, fill = Pincode)) + geom_col(alpha=0.8) + 
+  scale_color_brewer(palette = "Spectral")+
+  labs(title = "Listing price by number of bathrooms",
+       x = "Number of bathrooms", y = "Price per night")+
+  theme(text = element_text(size = 12, color = "#2D4F0C"),          
+        axis.text.x = element_text(angle = 45, color = "black"))
+```
+
+8.5.2.2 Here the relationship between the Average Listing Price by number of Bathrooms is seen.
+
+```{r}
+Paris_AirBnB %>%
+  group_by(Bathrooms, Pincode) %>%
+  summarise(avg_Price = mean(Price)) %>%
+  ggplot(aes(x = Bathrooms, y = avg_Price, color = Pincode)) + geom_line()+ geom_point() +
+  labs(title = "Average apartment price by number of bathrooms",x = "Number of bathrooms", y = "Average Price per night")
+```
+
+8.5.3.1 The relationship between the Listing Price by number of Beds was carried out here.
+
+```{r}
+ggplot(data = Paris_AirBnB) + 
+  geom_point(aes(x=Beds, y=Price, col=factor(Pincode))) + 
+  scale_x_continuous(breaks = seq(0,10,1)) + 
+  scale_y_continuous(breaks = seq(0,1000,100), limits = c(0,1000)) + 
+  ggtitle('Listing price by number of beds -1') + 
+  xlab('Number of beds') + 
+  ylab('Price per night')
+```
+
+8.5.3.2. The same is seen in a different visualization here.
+
+```{r}
+Paris_AirBnB %>% 
+  ggplot(aes(x = reorder(Bedrooms,Price), y = Price, fill = Pincode)) + geom_col(alpha=0.8) + 
+  scale_color_brewer(palette = "Spectral")+
+  labs(title = "Listing price by number of beds -2",
+       x = "Number of beds", y = "Price per night")+
+  theme(text = element_text(size = 12, color = "#2D4F0C"),          
+        axis.text.x = element_text(angle = 45, color = "black"))
+```
+
+8.5.3.3 The relationship between the Average Listing Price by number of Beds is seen here.
+
+```{r}
+Paris_AirBnB %>%
+  group_by(Beds, Pincode) %>%
+  summarise(avg_Price = mean(Price)) %>%
+  ggplot(aes(x = Beds, y = avg_Price, color = Pincode)) + geom_line()+ geom_point() +
+  labs(title = "Average Listing Price by Number of Beds",x = "Number of beds", y = "Average Price per night")
+```
+
+8.5.4.1 Below the Listing Price by the type of bed is computed.
+
+```{r}
+Bed_Type <- Paris_AirBnB %>% count(Bed_Type)
+Bed_Type = arrange(Bed_Type, desc(n))
+Bed_Type
+```
+
+8.5.4.1.1. Above we get a comprehensive overview of the type of beds and their corresponding numbers listed in the dataset. Here we see that there are five types of beds listed : Real Bed, Pull-out Sofa, Couch, Futon and Airbed
+
+8.5.4.2 A barplot was used to illustrate the same.
+
+```{r}
+ggplot(Paris_AirBnB,aes(x="", y="", fill=Bed_Type))+
+geom_bar(width = 1, stat = "identity")
+```
+
+8.5.4.3. The above is seen through a pie chart here.
+
+```{r}
+Count_Bed <- table(Paris_AirBnB$Bed_Type)
+Type_Bed <- names(Count_Bed)
+Counts <- as.vector(Count_Bed)
+Percentages <- scales::percent(round(Counts/sum(Counts), 2))
+Bed_Percentages <- sprintf("%s (%s)", Type_Bed, Percentages)
+Count_Type_Bed <- data.frame(group = Type_Bed, value = Counts)
+
+pie <- ggplot(Count_Type_Bed, aes(x = "", y = value, fill = Bed_Percentages))+
+  geom_bar(width = 1, stat = "identity")+
+  coord_polar("y", start = 0)+
+  scale_fill_brewer("Bed Types", palette = "hachure")+
+  ggtitle("Share of different Bed Types in Listings - 1")+
+  theme(plot.title = element_text(color = "black", size = 14, hjust = 0.5))+
+  ylab("")+
+  xlab("")+
+  labs(fill="")+
+  theme(axis.ticks = element_blank(), panel.grid = element_blank(), axis.text = element_blank())+
+  geom_text(aes(label = Percentages), size = 3, position = position_stack(vjust = 0.3))
+pie
+```
+
+8.5.4.3.1. From the bar plot and the pie chart it is observed that Real Beds make up majority of the share of beds with 87% among the Listings.
+
+8.5.4.4. The share of different bed types in Listings is seen through a boxplot here.
+
+```{r}
+ggplot(Paris_AirBnB)+ 
+  geom_boxplot(aes(x = Bed_Type,y = Price,fill = Bed_Type))+ 
+  labs(x = "Bed Type",y = "Price",fill = "Bed Type")+ 
+  ggtitle("Share of different Bed Types in Listings - 2")+
+  coord_flip()
+```
+
+8.5.4.5. The relationship between the Listing Price and the different bed types is seen here.
+
+```{r}
+Paris_AirBnB %>% 
+      group_by(Bed_Type) %>% 
+      summarise(Average_Price = mean(Price, na.rm = TRUE)) %>% 
+      ggplot(aes(x = reorder(Bed_Type, Average_Price), y = Average_Price, fill = Bed_Type)) +
+      geom_col(stat ="identity", fill="#79BF36") +
+      coord_flip() +
+      theme_minimal()+
+      labs(x = "Bed Type", y = "Price") +
+      geom_text(aes(label = round(Average_Price,digit = 2)), hjust = 1.0, color = "white", size = 4.5) +
+      ggtitle("Average Price comparison for different Bed Types") + 
+      xlab("Bed Type") + 
+      ylab("Average Price")
+```
+
+8.5.5.1. Here the relationship between the features ((No. of Guests, Bedrooms, Bathrooms and Beds) is seen against the Listing Price to get an overview.
+
+```{r}
+pfeatures <- ggplot(data=Paris_AirBnB) +
+  geom_smooth(mapping = aes(x=Price,y=No_of_Guests, col = 'No of guests'), method = 'gam') +
+  geom_smooth(mapping = aes(x=Price,y=Bedrooms, col = 'Bedrooms'), method = 'gam') +
+  geom_smooth(mapping = aes(x=Price,y=Bathrooms, col = 'Bathrooms'), method = 'gam') +
+  geom_smooth(mapping = aes(x=Price,y=Beds, col = 'Beds'), method = 'gam') +
+  ggtitle("Relationship between Features and Price") + labs(y= "Features", x = "Price")+
+  scale_fill_manual()
+ 
+ggplotly(pfeatures)     
+```
+
+### Number of apartments per owner
+
+#### Step 2 - Relationship between the Owner and corressponding Listings per Owner.
+
+9.1.1 The graph below illustrates the distribution of Listings per Owner.
+
+```{r}
+Host_Count <- table(Paris_AirBnB$Host_Listings_total)
+Host_Name_Count <- table(Paris_AirBnB$Host_Name)
+barplot(Host_Name_Count, Host_Count, main = "Number of Listings per owner", xlab = "Owner Name", ylab = "Total Listings count per Owner") 
+```
+
+9.1.2. Here we compare the host ids with their corresponding Listing count.
+
+```{r}
+Host_Property_Count <- Paris_AirBnB %>% count(Host_id) %>%
+           arrange(desc(n))
+```
+
+9.1.3. The graph below shows the association with the host id with the number of listings associated with the id.
+
+```{r}
+ggplot(data = Host_Property_Count) + 
+  geom_point(aes(x = Host_id, y = n)) +
+  ggtitle('Number of Listings per owner') + 
+  xlab('Hosts id') + 
+  ylab('Number of Listings')
+```
+
+9.2.1. Here we define we three groups of owner types (the ones that own only one listings, then between two and fifty and then more than fifty setting the upper limit at hundred) and then explore the relationship between the the host id and the groups defined. 
+
+```{r}
+Host_CountI <- Paris_AirBnB %>%
+  group_by(Host_id) %>%
+  summarise(No_Apt = n()) %>%
+  ungroup() %>%
+  mutate(Class = case_when(
+    No_Apt == 1 ~ "01",
+    between(No_Apt, 2,50) ~ "02-50",
+    No_Apt > 50 ~ "51-100"))
+
+Host_CountII <- Host_CountI %>%
+  group_by(Class) %>%
+  summarise(Nummer = n())
+
+ggplot(Host_CountII, aes(x = "", y = Nummer)) +  
+geom_col(aes(fill = factor(Class)), color = "white") + 
+geom_text(aes(y = Nummer / 1.23, label = Nummer),color = "black",size = 4)+ 
+labs(x = "", y = "", fill = "Number of Listings per host - 1") + 
+coord_polar(theta = "y")+
+theme_minimal()
+ 
+```
+
+9.2.2. Here we see a different representation for the above relationship.
+
+```{r}
+ggplot(Host_CountII)+  geom_boxplot(aes(x = Class,y = Nummer,fill = Class))+
+  labs(x = "",y = "",fill = "Number of Listings per host - 2")+  
+  coord_flip()
+```
+
+9.2.3. Here we see a third representation.
+
+```{r}
+ggplot(Host_CountII) + aes(y = Nummer, x = Class) + 
+  geom_col() +
+  theme(axis.text.x = element_text(size = 8, angle = 90)) +
+  ggtitle("Number of Listings per host - 3")
+```
+
+
+### Rent Price per City Quarter ("arrondissements")
+
+#### Step 3 - Relationship between Price of Renting and the corressponding Arrondissement the Listing is located in.
+
+10.1.1. The average price distribution with respect to each arrondissement is seen below.
+
+```{r}
+Paris_AirBnB %>% 
+  group_by(Pincode) %>%
+  summarize(Price = mean(Price)) %>%  
+  ggplot(aes(x = Pincode, y = Price, group = 1)) + 
+  geom_line() + geom_point() + theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(title = "Average Price Distribution per Arrondissemment ",
+       x = "Arrondissemment", y = "Price", caption = "Graph 2")
+  
+```
+
+10.1.2. The average listing price with respect to each arrondissement is seen below.
+
+```{r}
+Paris_AirBnB %>% 
+  group_by(Pincode) %>%
+  summarize(Price = mean(Price)) %>%  
+  ggplot(aes(x = reorder(Pincode,Price), y = Price, fill = Pincode)) + geom_col(alpha=0.8) + 
+  scale_color_brewer(palette = "Spectral")+
+  labs(title = "Average Listing price by Arrondissement",
+       x = "Arrondissement", y = "Price")+
+  theme(text = element_text(size = 12, color = "#2D4F0C"),          
+        axis.text.x = element_text(angle = 45, color = "black"))
+```
+
+10.2.1. Here we see the relaationship between each arrondissement and the respective listing price distribution.
+
+```{r}
+ggplot(data = Paris_AirBnB) +
+  geom_boxplot(aes(x=Pincode, y=Price, col=factor(Pincode))) + 
+  ggtitle('Listing Price per Arrondissement') + 
+  xlab('Arrondissements') + 
+  ylab('Price per night')
+```
+
+10.3.1. The distribution of the different property types per arrondissement is seen below.
+
+```{r}
+ ggplot(Paris_AirBnB, aes(x = fct_infreq(Pincode), fill = Room)) +
+    geom_bar() +
+    labs(title = "Distribution of Property Types by Arrondissements",
+         x = "Arrondissements", y = "No. of listings") +
+    theme(legend.position = "bottom",axis.text.x = element_text(angle = 90, hjust = 1), 
+          plot.title = element_text(color = "black", size = 12,  hjust = 0.5))
+```
+
+10.3.2. Here the Average Price is seen in relationship with the Neighbourhood variable.
+
+```{r}
+Arr_AvgPrice <- aggregate(cbind(Paris_AirBnB$Price),
+                  by = list(Quartier = Paris_AirBnB$Neighbourhood),
+                  FUN = function(x) mean(x))
+
+ggplot(data = Arr_AvgPrice, aes(x = Quartier, y = V1))+
+    geom_bar(stat = "identity", fill = "#8FBC8B", width = 0.8)+
+  geom_text(aes(label = round(V1, 2)), size=4)+
+    coord_flip()+
+    labs(title = "Average Price per Quartier per day",
+         x = "Quartier", y = "Average Price per day")+
+    theme(legend.position = "bottom",axis.text.x = element_text(angle = 90, hjust = 1), 
+          plot.title = element_text(color = "#2F4F4F", size = 12,  hjust = 0.5))
+```
+
+### Visit frequency of the different quarters according to time.
+
+#### Step 4 - Relationship between the Frequency of visits as per the Arrondissement and the different time periods within the dataset.
+
+11.1.1. Here we explore the dataset R and define the formatting for the date variable.
+
+```{r}
+Date <- R$date <- as.Date(R$date, format = "%Y-%m-%d")
+class(Date)
+```
+
+11.1.2.In the frequency table of the dataset R there are 663599 ids. 
+
+11.1.3. The Listing ids are expplored.
+
+```{r}
+R %>% count(listing_id)%>%
+  arrange(listing_id) %>%
+  head(5)
+```
+
+11.1.4. Then the listings are defined by month and year.
+
+```{r}
+R %>% mutate(month = format(date, '%m'), year = format(date, '%Y')) %>%
+  count(year, month) %>%
+  head(20)
+```
+
+
+11.2.1.The Visit frequency over all the years listed in the dataset is seen below.
+
+```{r}
+R %>% mutate(month = format(date, '%y')) %>%ggplot + 
+  geom_histogram(aes(x=(date), y= ..density..), bins = 87, fill='lightblue') +
+  geom_density(aes(x=date), col='dimgray') + 
+  ggtitle('Frequency of Visits per Year') +
+  scale_x_date(date_breaks = '1 year')
+```
+
+
+11.3.1. The freuency of visits per arrondissement per year.
+
+11.3.1.1. While the dataset L consists of the listings with their corressponding dates, the location is given in the dataset R. To get a comprehensive overview both datasets need to be consulted so they are combined with the join function, specifically inner join. 
+
+11.3.1.2. The dataset R.
+
+```{r}
+head(R)
+tail(R)
+```
+
+11.3.1.3. A new dataset is created from R, to make the inner join.
+
+```{r}
+Paris_Date <- select(R,Listing_id = listing_id,
+            date = date)
+head(Paris_Date)
+tail(Paris_Date)
+```
+
+11.3.1.4. Here the two datasets L and R are joined.
+
+```{r}
+First_Join <- Paris_AirBnB %>% select(Listing_id, Host_id, Host_Name , Host_Since, Host_Location, Address, Neighbourhood, City, Pincode, Latitude, Longitude, Type, Bathrooms, Bedrooms, Beds, Bed_Type, Room, Facilities, No_of_Guests, Price, Guests_Included, Min_Stay_Duration, Max_Stay_Duration, Availability, SuperHost, Host_verification, Host_Listings_total, Total_Reviews, Latest_Review )
+Second_Join <- Paris_Date %>% select(Listing_id, date)
+AirBnB_LR <- inner_join(First_Join, Second_Join, by = 'Listing_id')
+AirBnB_LR <- mutate(AirBnB_LR, month = format(date, '%m'), year = format(date, '%Y'))
+head(AirBnB_LR)
+tail(AirBnB_LR)
+```
+
+
+```{r}
+sapply(AirBnB_LR, typeof)
+```
+
+
+
+11.3.1.5. The frequency of visits per arrondisement per year is seen here.
+
+```{r}
+ggplot(AirBnB_LR) +
+      geom_bar(aes(y =Pincode ,fill=factor(year)))+
+      scale_size_area() +
+      labs( x="Frequency", y="Arrondissement",fill="Year")+
+      ggtitle('Frequency of Visits per Arrondissement per Year') +
+      scale_fill_brewer(palette ="Spectral")
+```
+
+11.4.1. The distribution of the visit frequency per arrondissement is seen below.
+
+```{r}
+ggplot(data = AirBnB_LR) + 
+  geom_bar(aes(x = year, fill=factor(Pincode))) +
+  ggtitle('Distribution of Frequency of Visits per Arrondissement') +
+  ylim(c(0,2000))
+```
+
+11.5.1. The distribution of the visit frequency per arrondissement per year is seen below.
+
+```{r}
+ggplot(data = AirBnB_LR) + 
+  geom_bar(aes(x = month, fill= factor(Pincode))) +
+  ggtitle('Distribution of Frequency of Visits per year per Arrondissement') +
+  ylim(c(0,2000)) +
+  facet_wrap(~year, nrow=4)
+```
+
+## Outline of the AirBnB dataset through an interactive map.
+
+### The library leaflet was used to display the property listings per arrondissement in Paris.
+```{r}
+Map_AirBnB <- select(L,longitude,zipcode,latitude,price)
+leaflet(Map_AirBnB %>% select(longitude,zipcode,latitude,price)) %>% addProviderTiles("CartoDB.DarkMatter") %>%
+  setView(lng = 2.3488, lat = 48.8534 ,zoom = 10) %>%
+   addTiles() %>% 
+  addMarkers(clusterOptions = markerClusterOptions()) %>%
+  addMiniMap()
+```
+
+## Conclusion
+
+In the dataset given, it is observed among the Listing types the majority of property fall under the category entire home or apartment. The Price range taken was taken between 0 to 1500 usd to avoid any outliers affecting the analysis. 
+
+In the above analysis we see the Listing Price is affected by the features that it offers. 
+
+The relationship between Price and Location illustrates that the popular and centrally located arrondissements are more expensive than the ones on the peripheral areas of the city.
+
+Then the number of listings listed by owners suggest that most hosts have about one listing with an exception of few.
+With respect to the Visit Frequency it is seen that the majority of visits fall between 2012 and 2015.
+
+Saving the file.
+
+```{r}
+#save(Paris_AirBnB, file = "Paris_AirBnB.RData")
+```
